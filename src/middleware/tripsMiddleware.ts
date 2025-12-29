@@ -8,6 +8,7 @@ import { shareWithOrganizationSchema } from '../schemas/organizationTripShare'
 import { UserTripShareModel } from '../models/userTripShareModel'
 import { shareWithUserSchema } from '../schemas/userTripShare'
 import UserModel from '../models/userModel'
+import { validateBody, validateHasFields } from '../utils/validation'
 
 export async function getTrips(ctx: Context) {
   const user = ctx.state.user as UserPublic
@@ -39,16 +40,9 @@ export async function getTrip(ctx: Context) {
 }
 
 export async function createTrip(ctx: Context) {
-  const validation = tripCreateSchema.safeParse(ctx.request.body)
-
-  if (!validation.success) {
-    ctx.throw(400, 'Validation failed', {
-      details: validation.error.flatten().fieldErrors,
-    })
-  }
-
+  const data = validateBody(ctx, tripCreateSchema)
   const user = ctx.state.user as UserPublic
-  const trip = await TripModel.create(validation.data)
+  const trip = await TripModel.create(data)
   await addOwner(trip.id, user.id)
   ctx.status = 201
   ctx.body = trip
@@ -56,23 +50,14 @@ export async function createTrip(ctx: Context) {
 
 export async function updateTrip(ctx: Context) {
   const id = parseInt(ctx.params.id, 10)
-  const validation = tripUpdateSchema.safeParse(ctx.request.body)
-
-  if (!validation.success) {
-    ctx.throw(400, 'Validation failed', {
-      details: validation.error.flatten().fieldErrors,
-    })
-  }
-
-  if (Object.keys(validation.data).length === 0) {
-    ctx.throw(400, 'No fields to update')
-  }
+  const data = validateBody(ctx, tripUpdateSchema)
+  validateHasFields(ctx, data)
 
   const user = ctx.state.user as UserPublic
   const canEdit = await userCanEditTrip(id, user.id)
   if (!canEdit) ctx.throw(403, 'Access denied')
 
-  const trip = await TripModel.update(id, validation.data)
+  const trip = await TripModel.update(id, data)
 
   if (!trip) ctx.throw(404, 'Trip not found')
 
@@ -103,17 +88,12 @@ export async function shareWithOrganization(ctx: Context) {
   const owner = await isOwner(tripId, user.id)
   if (!owner) ctx.throw(403, 'Only the trip owner can share')
 
-  const validation = shareWithOrganizationSchema.safeParse(ctx.request.body)
-  if (!validation.success) {
-    ctx.throw(400, 'Validation failed', {
-      details: validation.error.flatten().fieldErrors,
-    })
-  }
+  const data = validateBody(ctx, shareWithOrganizationSchema)
 
   const share = await OrganizationTripShareModel.create(
     tripId,
     user.organization_id,
-    validation.data.permission_level
+    data.permission_level
   )
 
   ctx.body = {
@@ -158,14 +138,9 @@ export async function shareWithUser(ctx: Context) {
   const targetUser = await UserModel.findByIdPublic(targetUserId)
   if (!targetUser) ctx.throw(404, 'User not found')
 
-  const validation = shareWithUserSchema.safeParse(ctx.request.body)
-  if (!validation.success) {
-    ctx.throw(400, 'Validation failed', {
-      details: validation.error.flatten().fieldErrors,
-    })
-  }
+  const data = validateBody(ctx, shareWithUserSchema)
 
-  const share = await UserTripShareModel.create(tripId, targetUserId, validation.data.permission_level)
+  const share = await UserTripShareModel.create(tripId, targetUserId, data.permission_level)
 
   ctx.body = {
     message: 'Trip shared with user successfully',

@@ -2,6 +2,7 @@ import { Context } from 'koa'
 import PaymentModel from '../models/paymentModel'
 import BookingModel from '../models/bookingModel'
 import { paymentCreateSchema, paymentUpdateSchema } from '../schemas/payment'
+import { validateBody, validateHasFields } from '../utils/validation'
 
 export async function getPayments(ctx: Context) {
   const status = ctx.query.status as string | undefined
@@ -24,38 +25,23 @@ export async function getPayment(ctx: Context) {
 }
 
 export async function createPayment(ctx: Context) {
-  const validation = paymentCreateSchema.safeParse(ctx.request.body)
-
-  if (!validation.success) {
-    ctx.throw(400, 'Validation failed', {
-      details: validation.error.flatten().fieldErrors,
-    })
-  }
+  const data = validateBody(ctx, paymentCreateSchema)
 
   // Verify booking exists
-  const booking = await BookingModel.findById(validation.data.booking_id)
+  const booking = await BookingModel.findById(data.booking_id)
   if (!booking) ctx.throw(400, 'Booking not found')
 
-  const payment = await PaymentModel.create(validation.data)
+  const payment = await PaymentModel.create(data)
   ctx.status = 201
   ctx.body = payment
 }
 
 export async function updatePayment(ctx: Context) {
   const id = parseInt(ctx.params.id, 10)
-  const validation = paymentUpdateSchema.safeParse(ctx.request.body)
+  const data = validateBody(ctx, paymentUpdateSchema)
+  validateHasFields(ctx, data)
 
-  if (!validation.success) {
-    ctx.throw(400, 'Validation failed', {
-      details: validation.error.flatten().fieldErrors,
-    })
-  }
-
-  if (Object.keys(validation.data).length === 0) {
-    ctx.throw(400, 'No fields to update')
-  }
-
-  const payment = await PaymentModel.update(id, validation.data)
+  const payment = await PaymentModel.update(id, data)
 
   if (!payment) ctx.throw(404, 'Payment not found')
 

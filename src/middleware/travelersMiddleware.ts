@@ -1,6 +1,7 @@
 import { Context } from 'koa'
 import TravelerModel from '../models/travelerModel'
 import { travelerCreateSchema, travelerUpdateSchema } from '../schemas/traveler'
+import { validateBody, validateHasFields } from '../utils/validation'
 
 export async function getTravelers(ctx: Context) {
   const email = ctx.query.email as string | undefined
@@ -18,16 +19,10 @@ export async function getTraveler(ctx: Context) {
 }
 
 export async function createTraveler(ctx: Context) {
-  const validation = travelerCreateSchema.safeParse(ctx.request.body)
-
-  if (!validation.success) {
-    ctx.throw(400, 'Validation failed', {
-      details: validation.error.flatten().fieldErrors,
-    })
-  }
+  const data = validateBody(ctx, travelerCreateSchema)
 
   try {
-    const traveler = await TravelerModel.create(validation.data)
+    const traveler = await TravelerModel.create(data)
     ctx.status = 201
     ctx.body = traveler
   } catch (error: unknown) {
@@ -40,20 +35,11 @@ export async function createTraveler(ctx: Context) {
 
 export async function updateTraveler(ctx: Context) {
   const id = parseInt(ctx.params.id, 10)
-  const validation = travelerUpdateSchema.safeParse(ctx.request.body)
-
-  if (!validation.success) {
-    ctx.throw(400, 'Validation failed', {
-      details: validation.error.flatten().fieldErrors,
-    })
-  }
-
-  if (Object.keys(validation.data).length === 0) {
-    ctx.throw(400, 'No fields to update')
-  }
+  const data = validateBody(ctx, travelerUpdateSchema)
+  validateHasFields(ctx, data)
 
   try {
-    const traveler = await TravelerModel.update(id, validation.data)
+    const traveler = await TravelerModel.update(id, data)
 
     if (!traveler) ctx.throw(404, 'Traveler not found')
 
