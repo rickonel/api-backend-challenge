@@ -12,11 +12,7 @@ export async function getTraveler(ctx: Context) {
   const id = parseInt(ctx.params.id, 10)
   const traveler = await TravelerModel.findById(id)
 
-  if (!traveler) {
-    ctx.status = 404
-    ctx.body = { error: 'Traveler not found' }
-    return
-  }
+  if (!traveler) ctx.throw(404, 'Traveler not found')
 
   ctx.body = traveler
 }
@@ -25,9 +21,9 @@ export async function createTraveler(ctx: Context) {
   const validation = travelerCreateSchema.safeParse(ctx.request.body)
 
   if (!validation.success) {
-    ctx.status = 400
-    ctx.body = { error: 'Validation failed', details: validation.error.flatten().fieldErrors }
-    return
+    ctx.throw(400, 'Validation failed', {
+      details: validation.error.flatten().fieldErrors,
+    })
   }
 
   try {
@@ -36,9 +32,7 @@ export async function createTraveler(ctx: Context) {
     ctx.body = traveler
   } catch (error: unknown) {
     if (error instanceof Error && error.message.includes('unique')) {
-      ctx.status = 409
-      ctx.body = { error: 'Email already exists' }
-      return
+      ctx.throw(409, 'Email already exists')
     }
     throw error
   }
@@ -49,32 +43,24 @@ export async function updateTraveler(ctx: Context) {
   const validation = travelerUpdateSchema.safeParse(ctx.request.body)
 
   if (!validation.success) {
-    ctx.status = 400
-    ctx.body = { error: 'Validation failed', details: validation.error.flatten().fieldErrors }
-    return
+    ctx.throw(400, 'Validation failed', {
+      details: validation.error.flatten().fieldErrors,
+    })
   }
 
   if (Object.keys(validation.data).length === 0) {
-    ctx.status = 400
-    ctx.body = { error: 'No fields to update' }
-    return
+    ctx.throw(400, 'No fields to update')
   }
 
   try {
     const traveler = await TravelerModel.update(id, validation.data)
 
-    if (!traveler) {
-      ctx.status = 404
-      ctx.body = { error: 'Traveler not found' }
-      return
-    }
+    if (!traveler) ctx.throw(404, 'Traveler not found')
 
     ctx.body = traveler
   } catch (error: unknown) {
     if (error instanceof Error && error.message.includes('unique')) {
-      ctx.status = 409
-      ctx.body = { error: 'Email already exists' }
-      return
+      ctx.throw(409, 'Email already exists')
     }
     throw error
   }
@@ -84,11 +70,7 @@ export async function deleteTraveler(ctx: Context) {
   const id = parseInt(ctx.params.id, 10)
   const deleted = await TravelerModel.remove(id)
 
-  if (!deleted) {
-    ctx.status = 404
-    ctx.body = { error: 'Traveler not found' }
-    return
-  }
+  if (!deleted) ctx.throw(404, 'Traveler not found')
 
   ctx.status = 204
 }
