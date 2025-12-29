@@ -112,10 +112,6 @@ beforeEach(async () => {
   await resetDatabase()
 })
 
-afterAll(async () => {
-  await pool.end()
-})
-
 describe('Exercise 1: Booking Cancellation', () => {
   it('cancels booking with completed payment and creates refund', async () => {
     const trip = await createTrip()

@@ -10,7 +10,7 @@
     "migrate": "ts-node scripts/migrate.ts",
     "seed": "ts-node scripts/seed.ts",
     "db:reset": "npm run migrate && npm run seed",
-    "test": "jest --runInBand"
+    "test": "jest --runInBand --forceExit"
   },
   "dependencies": {
     "date-fns": "^3.6.0",

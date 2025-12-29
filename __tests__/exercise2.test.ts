@@ -1,9 +1,14 @@
 import request from 'supertest'
 import app from '../src/index'
+import { setupDatabase, closeDatabase } from './helpers'
 
 describe('Exercise 2: Authentication & Authorization', () => {
   let aliceCookie: string
   let bobCookie: string
+
+  beforeAll(async () => {
+    await setupDatabase()
+  })
 
   describe('POST /auth/register', () => {
     it('should register a new user', async () => {

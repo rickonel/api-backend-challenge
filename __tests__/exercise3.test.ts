@@ -1,5 +1,6 @@
 import request from 'supertest'
 import app from '../src/index'
+import { setupDatabase, closeDatabase } from './helpers'
 
 describe('Exercise 3: Organization Sharing', () => {
   let aliceCookie: string
@@ -7,6 +8,8 @@ describe('Exercise 3: Organization Sharing', () => {
   let charlieCookie: string
 
   beforeAll(async () => {
+    await setupDatabase()
+    
     // Login users
     const aliceRes = await request(app.callback())
       .post('/auth/login')
@@ -137,5 +140,9 @@ describe('Exercise 3: Organization Sharing', () => {
       const tripIds = response.body.map((t: any) => t.id)
       expect(tripIds).not.toContain(1) // Trip 1 no longer shared
     })
+  })
+
+  afterAll(async () => {
+    await closeDatabase()
   })
 })
