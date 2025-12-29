@@ -2,8 +2,7 @@ import { Context } from 'koa'
 import TripModel from '../models/tripModel'
 import { tripCreateSchema, tripUpdateSchema } from '../schemas/trip'
 import { UserPublic } from '../schemas/user'
-import { addOwner } from '../models/tripOwnerModel'
-import { userCanAccessTrip, userCanEditTrip } from '../models/tripPermissionModel'
+import { userCanAccessTrip, userCanEditTrip, addOwner } from '../models/tripPermissionModel'
 
 export async function getTrips(ctx: Context) {
   const user = ctx.state.user as UserPublic

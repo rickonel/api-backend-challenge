@@ -1,4 +1,5 @@
 import { pool } from '../src/db'
+import { hashPassword } from '../src/utils/crypto'
 
 async function seed() {
   const client = await pool.connect()
@@ -6,17 +7,40 @@ async function seed() {
   try {
     console.log('Seeding database...')
 
-    // Clear existing data
+    // Clear existing data 
     await client.query('DELETE FROM payments')
     await client.query('DELETE FROM bookings')
     await client.query('DELETE FROM travelers')
+    await client.query('DELETE FROM trip_permissions')
+    await client.query('DELETE FROM sessions')
     await client.query('DELETE FROM trips')
+    await client.query('DELETE FROM users')
+    await client.query('DELETE FROM organizations')
 
     // Reset sequences
     await client.query('ALTER SEQUENCE trips_id_seq RESTART WITH 1')
     await client.query('ALTER SEQUENCE travelers_id_seq RESTART WITH 1')
     await client.query('ALTER SEQUENCE bookings_id_seq RESTART WITH 1')
     await client.query('ALTER SEQUENCE payments_id_seq RESTART WITH 1')
+    await client.query('ALTER SEQUENCE organizations_id_seq RESTART WITH 1')
+    await client.query('ALTER SEQUENCE users_id_seq RESTART WITH 1')
+
+    // Insert organizations
+    await client.query(`
+      INSERT INTO organizations (name) VALUES
+      ('Wanderlust Travel'),
+      ('Global Adventures')
+    `)
+
+    // Insert users with properly hashed passwords
+    const password_hash = await hashPassword('password123')
+    
+    await client.query(`
+      INSERT INTO users (organization_id, email, password_hash, first_name, last_name) VALUES
+      (1, 'alice@wanderlust.com', $1, 'Alice', 'Johnson'),
+      (1, 'bob@wanderlust.com', $1, 'Bob', 'Smith'),
+      (2, 'charlie@global.com', $1, 'Charlie', 'Brown')
+    `, [password_hash])
 
     // Insert trips
     await client.query(`

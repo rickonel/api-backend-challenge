@@ -78,9 +78,11 @@ async function migrate() {
     `)
 
     await client.query(`
-      CREATE TABLE IF NOT EXISTS trip_owners (
+      CREATE TABLE IF NOT EXISTS trip_permissions (
         trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
         user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        permission_level VARCHAR(20) NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
         PRIMARY KEY (trip_id, user_id)
       )
     `)
@@ -102,7 +104,7 @@ async function migrate() {
       CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)
     `)
     await client.query(`
-      CREATE INDEX IF NOT EXISTS idx_trip_owners_user_id ON trip_owners(user_id)
+      CREATE INDEX IF NOT EXISTS idx_trip_permissions_user_id ON trip_permissions(user_id)
     `)
 
     console.log('Migrations completed successfully')
