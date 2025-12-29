@@ -2,8 +2,6 @@ import { Context } from 'koa'
 import BookingModel from '../models/bookingModel'
 import TripModel from '../models/tripModel'
 import TravelerModel from '../models/travelerModel'
-import PaymentModel from '../models/paymentModel'
-import { PaymentStatus } from '../schemas/payment'
 import { bookingCreateSchema, bookingUpdateSchema } from '../schemas/booking'
 import { validateBody, validateHasFields } from '../utils/validation'
 import { parseId, parseQueryInt } from '../utils/params'
@@ -75,28 +73,14 @@ export async function cancelBooking(ctx: Context) {
   const id = parseId(ctx)
   const booking = await requireResource(ctx, () => BookingModel.findById(id), 'Booking')
 
-  if (booking.status === 'cancelled') ctx.throw(400, 'Booking is already cancelled')
-
-  const updatedBooking = await BookingModel.update(id, { status: 'cancelled' })
-  if (!updatedBooking) ctx.throw(500, 'Failed to cancel booking')
-
-  const completedPayment = await PaymentModel.findLatestCompletedByBooking(id)
-  let refund
-
-  if (completedPayment) {
-    const amount = Number(completedPayment.amount)
-    const refundAmount = -Math.abs(amount)
-
-    refund = await PaymentModel.create({
-      booking_id: id,
-      amount: refundAmount,
-      currency: completedPayment.currency,
-      status: PaymentStatus.Refunded,
-    })
+  if (booking.status === 'cancelled') {
+    ctx.throw(400, 'Booking is already cancelled')
   }
 
+  const result = await BookingModel.cancelWithRefund(id)
+
   ctx.body = {
-    booking: updatedBooking,
-    ...(refund ? { refund } : {}),
+    booking: result.booking,
+    ...(result.refund ? { refund: result.refund } : {}),
   }
 }

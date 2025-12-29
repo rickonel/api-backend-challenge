@@ -1,5 +1,9 @@
 import { executeQuery } from '../db'
 import { Booking, BookingCreate, BookingUpdate } from '../schemas/booking'
+import { Payment } from '../schemas/payment'
+import { PaymentStatus } from '../schemas/payment'
+import { withTransaction } from '../utils/transaction'
+import { PoolClient } from 'pg'
 
 interface BookingFilters {
   status?: string
@@ -82,10 +86,58 @@ async function remove(id: number): Promise<boolean> {
   return (result.rowCount ?? 0) > 0
 }
 
+interface CancelBookingResult {
+  booking: Booking
+  refund?: Payment
+}
+
+async function cancelWithRefund(id: number): Promise<CancelBookingResult> {
+  // ACID: Use transaction to ensure atomicity: both operations succeed or both fail
+  return withTransaction(async (client: PoolClient) => {
+    const updateResult = await client.query<Booking>(
+      `UPDATE bookings SET status = $1 WHERE id = $2 RETURNING *`,
+      ['cancelled', id]
+    )
+    const updatedBooking = updateResult.rows[0]
+    
+    if (!updatedBooking) {
+      throw new Error('Failed to cancel booking')
+    }
+
+    const paymentResult = await client.query<Payment>(
+      `SELECT *
+       FROM payments
+       WHERE booking_id = $1 AND status = 'completed'
+       ORDER BY created_at DESC, id DESC
+       LIMIT 1`,
+      [id]
+    )
+    const completedPayment = paymentResult.rows[0]
+
+    let refund: Payment | undefined
+
+    if (completedPayment) {
+      const amount = Number(completedPayment.amount)
+      const refundAmount = -Math.abs(amount)
+
+      const refundResult = await client.query<Payment>(
+        `INSERT INTO payments (booking_id, amount, currency, status)
+         VALUES ($1, $2, $3, $4)
+         RETURNING *`,
+        [id, refundAmount, completedPayment.currency, PaymentStatus.Refunded]
+      )
+      refund = refundResult.rows[0]
+    }
+
+    return { booking: updatedBooking, refund }
+  })
+}
+
 export default {
   findAll,
   findById,
   create,
   update,
   remove,
+  cancelWithRefund,
 }
