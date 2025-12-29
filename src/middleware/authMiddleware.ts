@@ -8,8 +8,9 @@ import { validateBody } from '../utils/validation'
 import { requireUser } from '../utils/auth'
 
 
-// Session duration: 7 days
-const SESSION_DURATION_MS = 7 * 24 * 60 * 60 * 1000
+// Session duration: configurable via environment variable, default 7 days
+const SESSION_DURATION_DAYS = parseInt(process.env.SESSION_DURATION_DAYS || '7', 10)
+const SESSION_DURATION_MS = SESSION_DURATION_DAYS * 24 * 60 * 60 * 1000
 
 export async function register(ctx: Context) {
   const data = validateBody(ctx, userRegisterSchema)

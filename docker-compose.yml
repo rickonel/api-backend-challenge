@@ -3,15 +3,15 @@ services:
     image: postgres:16.3
     container_name: backend-challenge-postgres
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: backend_challenge
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_DB: ${POSTGRES_DB:-backend_challenge}
     ports:
-      - '5432:5432'
+      - '${POSTGRES_PORT:-5432}:5432'
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-postgres}']
       interval: 5s
       timeout: 5s
       retries: 5
@@ -22,14 +22,19 @@ services:
       dockerfile: Dockerfile
     container_name: backend-challenge-api
     ports:
-      - '3000:3000'
+      - '${PORT:-3000}:3000'
+    env_file:
+      - .env
     environment:
       POSTGRES_HOST: postgres
-      POSTGRES_PORT: 5432
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: backend_challenge
-      PORT: 3000
+      POSTGRES_PORT: ${POSTGRES_PORT:-5432}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_DB: ${POSTGRES_DB:-backend_challenge}
+      PORT: ${PORT:-3000}
+      NODE_ENV: ${NODE_ENV:-development}
+      SESSION_DURATION_DAYS: ${SESSION_DURATION_DAYS:-7}
+      COOKIE_SECRET: ${COOKIE_SECRET:-changeme}
     depends_on:
       postgres:
         condition: service_healthy
