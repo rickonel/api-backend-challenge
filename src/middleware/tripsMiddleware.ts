@@ -41,8 +41,9 @@ export async function getTrip(ctx: Context) {
 export async function createTrip(ctx: Context) {
   const data = validateBody(ctx, tripCreateSchema)
   const user = requireUser(ctx)
-  const trip = await TripModel.create(data)
-  await addOwner(trip.id, user.id)
+  
+  const trip = await TripModel.createWithOwner(data, user.id)
+  
   ctx.status = 201
   ctx.body = trip
 }
