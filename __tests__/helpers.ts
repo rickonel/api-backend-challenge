@@ -9,6 +9,7 @@ export async function setupDatabase() {
     await client.query('DELETE FROM payments')
     await client.query('DELETE FROM bookings')
     await client.query('DELETE FROM travelers')
+    await client.query('DELETE FROM user_trip_shares')
     await client.query('DELETE FROM organization_trip_shares')
     await client.query('DELETE FROM trip_permissions')
     await client.query('DELETE FROM sessions')
