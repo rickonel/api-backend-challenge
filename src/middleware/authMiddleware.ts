@@ -1,101 +1,101 @@
 import { Context } from 'koa'
-import { addDays } from 'date-fns'
-import { userRegisterSchema, userLoginSchema, UserPublic } from '../schemas/user'
-import * as UserModel from '../models/userModel'
-import * as SessionModel from '../models/sessionModel'
+import UserModel from '../models/userModel'
+import SessionModel from '../models/sessionModel'
+import OrganizationModel from '../models/organizationModel'
+import { userRegisterSchema, userLoginSchema } from '../schemas/user'
 import { hashPassword, comparePassword, generateSessionId } from '../utils/crypto'
+import { validateBody } from '../utils/validation'
+import { requireUser } from '../utils/auth'
 
-const SESSION_COOKIE_NAME = 'session_id'
-const SESSION_DAYS = 7
 
-function toPublicUser(user: UserModel.UserRecord): UserPublic {
-  const { password_hash, ...rest } = user
-  return rest
-}
+// Session duration: 7 days
+const SESSION_DURATION_MS = 7 * 24 * 60 * 60 * 1000
 
-async function createSession(ctx: Context, userId: number) {
+export async function register(ctx: Context) {
+  const data = validateBody(ctx, userRegisterSchema)
+  const { email, password, first_name, last_name, organization_id } = data
+
+  const existingUser = await UserModel.findByEmail(email)
+  if (existingUser) ctx.throw(400, 'User with this email already exists')
+
+  const organization = await OrganizationModel.findById(organization_id)
+  if (!organization) ctx.throw(400, 'Organization not found')
+
+  const password_hash = await hashPassword(password)
+
+  const user = await UserModel.create({
+    email,
+    password_hash,
+    first_name,
+    last_name,
+    organization_id,
+  })
+
   const sessionId = generateSessionId()
-  const expiresAt = addDays(new Date(), SESSION_DAYS).toISOString()
-
+  const expiresAt = new Date(Date.now() + SESSION_DURATION_MS).toISOString()
   await SessionModel.create({
     id: sessionId,
-    user_id: userId,
+    user_id: user.id,
     expires_at: expiresAt,
   })
 
-  ctx.cookies.set(SESSION_COOKIE_NAME, sessionId, {
+  ctx.cookies.set('session_id', sessionId, {
     httpOnly: true,
-    sameSite: 'lax',
-    maxAge: SESSION_DAYS * 24 * 60 * 60 * 1000,
-  })
-}
-
-export async function register(ctx: Context) {
-  const validation = userRegisterSchema.safeParse(ctx.request.body)
-  if (!validation.success) {
-    ctx.throw(400, 'Validation failed', {
-      details: validation.error.flatten().fieldErrors,
-    })
-  }
-
-  const existingUser = await UserModel.findByEmail(validation.data.email)
-  if (existingUser) {
-    ctx.throw(409, 'Email already exists')
-  }
-
-  const passwordHash = await hashPassword(validation.data.password)
-  const user = await UserModel.create({
-    email: validation.data.email,
-    password_hash: passwordHash,
-    first_name: validation.data.first_name,
-    last_name: validation.data.last_name,
-    organization_id: validation.data.organization_id,
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: SESSION_DURATION_MS,
   })
 
-  await createSession(ctx, user.id)
+  const publicUser = await UserModel.findByIdPublic(user.id)
 
   ctx.status = 201
-  ctx.body = { user: toPublicUser(user) }
+  ctx.body = { user: publicUser }
 }
 
 export async function login(ctx: Context) {
-  const validation = userLoginSchema.safeParse(ctx.request.body)
-  if (!validation.success) {
-    ctx.throw(400, 'Validation failed', {
-      details: validation.error.flatten().fieldErrors,
-    })
-  }
 
-  const user = await UserModel.findByEmail(validation.data.email)
-  if (!user) {
-    ctx.throw(401, 'Invalid email or password')
-  }
+    
+  const data = validateBody(ctx, userLoginSchema)
+  const { email, password } = data
 
-  const passwordMatches = await comparePassword(validation.data.password, user.password_hash)
-  if (!passwordMatches) {
-    ctx.throw(401, 'Invalid email or password')
-  }
+  const user = await UserModel.findByEmail(email)
+  if (!user) ctx.throw(401, 'Invalid email or password')
 
-  await createSession(ctx, user.id)
+  const isValid = await comparePassword(password, user.password_hash)
+  if (!isValid) ctx.throw(401, 'Invalid email or password')
 
-  ctx.body = { user: toPublicUser(user) }
+  const sessionId = generateSessionId()
+  const expiresAt = new Date(Date.now() + SESSION_DURATION_MS).toISOString()
+  await SessionModel.create({
+    id: sessionId,
+    user_id: user.id,
+    expires_at: expiresAt,
+  })
+
+  ctx.cookies.set('session_id', sessionId, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: SESSION_DURATION_MS,
+  })
+
+  const publicUser = await UserModel.findByIdPublic(user.id)
+
+  ctx.status = 200
+  ctx.body = { user: publicUser }
 }
 
 export async function logout(ctx: Context) {
-  const sessionId = ctx.cookies.get(SESSION_COOKIE_NAME)
+  const sessionId = ctx.cookies.get('session_id')
+
   if (sessionId) {
     await SessionModel.remove(sessionId)
-    ctx.cookies.set(SESSION_COOKIE_NAME, '', { httpOnly: true, maxAge: 0 })
   }
 
+  ctx.cookies.set('session_id', '', { maxAge: 0 })
+  ctx.status = 200
   ctx.body = { message: 'Logged out successfully' }
 }
 
 export async function me(ctx: Context) {
-  const user = ctx.state.user as UserPublic | undefined
-  if (!user) {
-    ctx.throw(401, 'Authentication required')
-  }
-
+  const user = requireUser(ctx)
   ctx.body = { user }
 }

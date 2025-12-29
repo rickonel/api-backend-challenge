@@ -1,35 +1,32 @@
 import { Context, Next } from 'koa'
-import * as SessionModel from '../models/sessionModel'
-import * as UserModel from '../models/userModel'
+import SessionModel from '../models/sessionModel'
+import UserModel from '../models/userModel'
 
-const SESSION_COOKIE_NAME = 'session_id'
 
 export async function authenticate(ctx: Context, next: Next) {
-  const sessionId = ctx.cookies.get(SESSION_COOKIE_NAME)
+  const sessionId = ctx.cookies.get('session_id')
+
   if (!sessionId) {
     await next()
     return
   }
 
-  const session = await SessionModel.findById(sessionId)
+  const session = await SessionModel.findByIdAndNotExpired(sessionId)
   if (!session) {
+    ctx.cookies.set('session_id', '', { maxAge: 0 })
     await next()
     return
   }
 
-  const user = await UserModel.findById(session.user_id)
+  const user = await UserModel.findByIdPublic(session.user_id)
   if (user) {
-    const { password_hash, ...publicUser } = user
-    ctx.state.user = publicUser
+    ctx.state.user = user
   }
 
   await next()
 }
 
 export async function requireAuth(ctx: Context, next: Next) {
-  if (!ctx.state.user) {
-    ctx.throw(401, 'Authentication required')
-  }
-
+  if (!ctx.state.user) ctx.throw(401, 'Authentication required')
   await next()
 }
