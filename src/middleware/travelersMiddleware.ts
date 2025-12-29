@@ -1,6 +1,9 @@
 import { Context } from 'koa'
 import TravelerModel from '../models/travelerModel'
 import { travelerCreateSchema, travelerUpdateSchema } from '../schemas/traveler'
+import { validateBody, validateHasFields } from '../utils/validation'
+import { parseId } from '../utils/params'
+import { requireResource, handleUniqueConstraint } from '../utils/resources'
 
 export async function getTravelers(ctx: Context) {
   const email = ctx.query.email as string | undefined
@@ -9,86 +12,48 @@ export async function getTravelers(ctx: Context) {
 }
 
 export async function getTraveler(ctx: Context) {
-  const id = parseInt(ctx.params.id, 10)
-  const traveler = await TravelerModel.findById(id)
-
-  if (!traveler) {
-    ctx.status = 404
-    ctx.body = { error: 'Traveler not found' }
-    return
-  }
+  const id = parseId(ctx)
+  const traveler = await requireResource(ctx, () => TravelerModel.findById(id), 'Traveler')
 
   ctx.body = traveler
 }
 
 export async function createTraveler(ctx: Context) {
-  const validation = travelerCreateSchema.safeParse(ctx.request.body)
+  const data = validateBody(ctx, travelerCreateSchema)
 
-  if (!validation.success) {
-    ctx.status = 400
-    ctx.body = { error: 'Validation failed', details: validation.error.flatten().fieldErrors }
-    return
-  }
+  const traveler = await handleUniqueConstraint(
+    ctx,
+    () => TravelerModel.create(data),
+    'Email already exists'
+  )
 
-  try {
-    const traveler = await TravelerModel.create(validation.data)
-    ctx.status = 201
-    ctx.body = traveler
-  } catch (error: unknown) {
-    if (error instanceof Error && error.message.includes('unique')) {
-      ctx.status = 409
-      ctx.body = { error: 'Email already exists' }
-      return
-    }
-    throw error
-  }
+  ctx.status = 201
+  ctx.body = traveler
 }
 
 export async function updateTraveler(ctx: Context) {
-  const id = parseInt(ctx.params.id, 10)
-  const validation = travelerUpdateSchema.safeParse(ctx.request.body)
+  const id = parseId(ctx)
+  const data = validateBody(ctx, travelerUpdateSchema)
+  validateHasFields(ctx, data)
 
-  if (!validation.success) {
-    ctx.status = 400
-    ctx.body = { error: 'Validation failed', details: validation.error.flatten().fieldErrors }
-    return
-  }
+  const traveler = await handleUniqueConstraint(
+    ctx,
+    async () => {
+      const updated = await TravelerModel.update(id, data)
+      if (!updated) ctx.throw(404, 'Traveler not found')
+      return updated
+    },
+    'Email already exists'
+  )
 
-  if (Object.keys(validation.data).length === 0) {
-    ctx.status = 400
-    ctx.body = { error: 'No fields to update' }
-    return
-  }
-
-  try {
-    const traveler = await TravelerModel.update(id, validation.data)
-
-    if (!traveler) {
-      ctx.status = 404
-      ctx.body = { error: 'Traveler not found' }
-      return
-    }
-
-    ctx.body = traveler
-  } catch (error: unknown) {
-    if (error instanceof Error && error.message.includes('unique')) {
-      ctx.status = 409
-      ctx.body = { error: 'Email already exists' }
-      return
-    }
-    throw error
-  }
+  ctx.body = traveler
 }
 
 export async function deleteTraveler(ctx: Context) {
-  const id = parseInt(ctx.params.id, 10)
+  const id = parseId(ctx)
   const deleted = await TravelerModel.remove(id)
 
-  if (!deleted) {
-    ctx.status = 404
-    ctx.body = { error: 'Traveler not found' }
-    return
-  }
+  if (!deleted) ctx.throw(404, 'Traveler not found')
 
   ctx.status = 204
 }

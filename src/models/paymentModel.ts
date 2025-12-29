@@ -38,17 +38,30 @@ async function findById(id: number): Promise<Payment | undefined> {
   return result.rows[0]
 }
 
-async function create(data: PaymentCreate): Promise<Payment> {
+async function create(data: PaymentCreate & { status?: string }): Promise<Payment> {
   const query = `
-    INSERT INTO payments (booking_id, amount, currency)
-    VALUES ($1, $2, $3)
+    INSERT INTO payments (booking_id, amount, currency, status)
+    VALUES ($1, $2, $3, $4)
     RETURNING *
   `
   const result = await executeQuery<Payment>(query, [
     data.booking_id,
     data.amount,
     data.currency || 'EUR',
+    data.status ?? 'pending',
   ])
+  return result.rows[0]
+}
+
+async function findLatestCompletedByBooking(bookingId: number): Promise<Payment | undefined> {
+  const query = `
+    SELECT *
+    FROM payments
+    WHERE booking_id = $1 AND status = 'completed'
+    ORDER BY created_at DESC, id DESC
+    LIMIT 1
+  `
+  const result = await executeQuery<Payment>(query, [bookingId])
   return result.rows[0]
 }
 
@@ -92,4 +105,5 @@ export default {
   create,
   update,
   remove,
+  findLatestCompletedByBooking,
 }

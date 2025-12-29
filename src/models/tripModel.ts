@@ -1,5 +1,7 @@
 import { executeQuery } from '../db'
 import { Trip, TripCreate, TripUpdate } from '../schemas/trip'
+import { withTransaction } from '../utils/transaction'
+import { PoolClient } from 'pg'
 
 async function findAll(destination?: string): Promise<Trip[]> {
   let query = 'SELECT * FROM trips'
@@ -75,10 +77,37 @@ async function remove(id: number): Promise<boolean> {
   return (result.rowCount ?? 0) > 0
 }
 
+async function createWithOwner(data: TripCreate, userId: number): Promise<Trip> {
+  // ACID: Use transaction to ensure both trip creation and owner assignment succeed or fail together
+  return withTransaction(async (client: PoolClient) => {
+
+    const tripResult = await client.query<Trip>(
+      `INSERT INTO trips (title, destination, start_date, end_date)
+       VALUES ($1, $2, $3, $4)
+       RETURNING *`,
+      [data.title, data.destination, data.start_date, data.end_date]
+    )
+    const trip = tripResult.rows[0]
+
+    if (!trip) {
+      throw new Error('Failed to create trip')
+    }
+
+    await client.query(
+      `INSERT INTO trip_permissions (trip_id, user_id, permission_level)
+       VALUES ($1, $2, 'owner')`,
+      [trip.id, userId]
+    )
+
+    return trip
+  })
+}
+
 export default {
   findAll,
   findById,
   create,
   update,
   remove,
+  createWithOwner,
 }

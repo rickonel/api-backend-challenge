@@ -2,89 +2,54 @@ import { Context } from 'koa'
 import PaymentModel from '../models/paymentModel'
 import BookingModel from '../models/bookingModel'
 import { paymentCreateSchema, paymentUpdateSchema } from '../schemas/payment'
+import { validateBody, validateHasFields } from '../utils/validation'
+import { parseId, parseQueryInt } from '../utils/params'
+import { requireResource } from '../utils/resources'
 
 export async function getPayments(ctx: Context) {
   const status = ctx.query.status as string | undefined
-  const bookingId = ctx.query.booking_id as string | undefined
+  const bookingId = parseQueryInt(ctx.query.booking_id)
 
   const payments = await PaymentModel.findAll({
     status,
-    booking_id: bookingId ? parseInt(bookingId, 10) : undefined,
+    booking_id: bookingId,
   })
   ctx.body = payments
 }
 
 export async function getPayment(ctx: Context) {
-  const id = parseInt(ctx.params.id, 10)
-  const payment = await PaymentModel.findById(id)
-
-  if (!payment) {
-    ctx.status = 404
-    ctx.body = { error: 'Payment not found' }
-    return
-  }
+  const id = parseId(ctx)
+  const payment = await requireResource(ctx, () => PaymentModel.findById(id), 'Payment')
 
   ctx.body = payment
 }
 
 export async function createPayment(ctx: Context) {
-  const validation = paymentCreateSchema.safeParse(ctx.request.body)
-
-  if (!validation.success) {
-    ctx.status = 400
-    ctx.body = { error: 'Validation failed', details: validation.error.flatten().fieldErrors }
-    return
-  }
+  const data = validateBody(ctx, paymentCreateSchema)
 
   // Verify booking exists
-  const booking = await BookingModel.findById(validation.data.booking_id)
-  if (!booking) {
-    ctx.status = 400
-    ctx.body = { error: 'Booking not found' }
-    return
-  }
+  await requireResource(ctx, () => BookingModel.findById(data.booking_id), 'Booking', 400)
 
-  const payment = await PaymentModel.create(validation.data)
+  const payment = await PaymentModel.create(data)
   ctx.status = 201
   ctx.body = payment
 }
 
 export async function updatePayment(ctx: Context) {
-  const id = parseInt(ctx.params.id, 10)
-  const validation = paymentUpdateSchema.safeParse(ctx.request.body)
+  const id = parseId(ctx)
+  const data = validateBody(ctx, paymentUpdateSchema)
+  validateHasFields(ctx, data)
 
-  if (!validation.success) {
-    ctx.status = 400
-    ctx.body = { error: 'Validation failed', details: validation.error.flatten().fieldErrors }
-    return
-  }
-
-  if (Object.keys(validation.data).length === 0) {
-    ctx.status = 400
-    ctx.body = { error: 'No fields to update' }
-    return
-  }
-
-  const payment = await PaymentModel.update(id, validation.data)
-
-  if (!payment) {
-    ctx.status = 404
-    ctx.body = { error: 'Payment not found' }
-    return
-  }
+  const payment = await requireResource(ctx, () => PaymentModel.update(id, data), 'Payment')
 
   ctx.body = payment
 }
 
 export async function deletePayment(ctx: Context) {
-  const id = parseInt(ctx.params.id, 10)
+  const id = parseId(ctx)
   const deleted = await PaymentModel.remove(id)
 
-  if (!deleted) {
-    ctx.status = 404
-    ctx.body = { error: 'Payment not found' }
-    return
-  }
+  if (!deleted) ctx.throw(404, 'Payment not found')
 
   ctx.status = 204
 }

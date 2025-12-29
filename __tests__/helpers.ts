@@ -1,16 +1,15 @@
 import { pool } from '../src/db'
 import { hashPassword } from '../src/utils/crypto'
 
-async function seed() {
+export async function setupDatabase() {
   const client = await pool.connect()
-
+  
   try {
-    console.log('Seeding database...')
-
-    // Clear existing data 
+    // Clear existing data
     await client.query('DELETE FROM payments')
     await client.query('DELETE FROM bookings')
     await client.query('DELETE FROM travelers')
+    await client.query('DELETE FROM user_trip_shares')
     await client.query('DELETE FROM organization_trip_shares')
     await client.query('DELETE FROM trip_permissions')
     await client.query('DELETE FROM sessions')
@@ -84,17 +83,11 @@ async function seed() {
       (2, 750.00, 'EUR', 'pending'),
       (3, 1200.00, 'EUR', 'completed')
     `)
-
-    console.log('Seed data inserted successfully')
-  } catch (error) {
-    console.error('Seed failed:', error)
-    throw error
   } finally {
     client.release()
-    await pool.end()
   }
 }
 
-seed()
-  .then(() => process.exit(0))
-  .catch(() => process.exit(1))
+export async function closeDatabase() {
+  await pool.end()
+}
