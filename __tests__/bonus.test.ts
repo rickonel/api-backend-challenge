@@ -181,6 +181,187 @@ describe('Bonus: User-Specific Trip Sharing', () => {
     })
   })
 
+  // Additional edge cases for user-specific sharing
+  describe('User Sharing Edge Cases', () => {
+    it('should reject sharing with invalid user ID format', async () => {
+      await request(app.callback())
+        .post('/trips/1/share/user/invalid')
+        .set('Cookie', aliceCookie)
+        .send({ permission_level: 'read' })
+        .expect(400)
+    })
+
+    it('should reject sharing with negative user ID', async () => {
+      await request(app.callback())
+        .post('/trips/1/share/user/-1')
+        .set('Cookie', aliceCookie)
+        .send({ permission_level: 'read' })
+        .expect(404)
+    })
+
+    it('should reject sharing with invalid permission level', async () => {
+      await request(app.callback())
+        .post('/trips/1/share/user/2')
+        .set('Cookie', aliceCookie)
+        .send({ permission_level: 'admin' })
+        .expect(400)
+    })
+
+    it('should reject sharing without permission level', async () => {
+      await request(app.callback())
+        .post('/trips/1/share/user/2')
+        .set('Cookie', aliceCookie)
+        .send({})
+        .expect(400)
+    })
+
+    it('should allow updating permission level by re-sharing', async () => {
+      // Share with read first
+      await request(app.callback())
+        .post('/trips/1/share/user/2')
+        .set('Cookie', aliceCookie)
+        .send({ permission_level: 'read' })
+
+      // Re-share with write
+      const response = await request(app.callback())
+        .post('/trips/1/share/user/2')
+        .set('Cookie', aliceCookie)
+        .send({ permission_level: 'write' })
+        .expect(200)
+
+      expect(response.body.share.permission_level).toBe('write')
+
+      // Bob should now be able to edit
+      await request(app.callback())
+        .put('/trips/1')
+        .set('Cookie', bobCookie)
+        .send({ title: 'Updated by Bob' })
+        .expect(200)
+    })
+
+    it('should not allow non-owners to share even with write access', async () => {
+      // Alice shares trip 1 with Bob (write)
+      await request(app.callback())
+        .post('/trips/1/share/user/2')
+        .set('Cookie', aliceCookie)
+        .send({ permission_level: 'write' })
+
+      // Bob tries to share with Charlie (should fail)
+      await request(app.callback())
+        .post('/trips/1/share/user/3')
+        .set('Cookie', bobCookie)
+        .send({ permission_level: 'read' })
+        .expect(403)
+    })
+
+    it('should not allow unsharing by non-owners', async () => {
+      // Alice shares trip 1 with Bob
+      await request(app.callback())
+        .post('/trips/1/share/user/2')
+        .set('Cookie', aliceCookie)
+        .send({ permission_level: 'write' })
+
+      // Bob tries to unshare himself (should fail, only owner can unshare)
+      await request(app.callback())
+        .delete('/trips/1/share/user/2')
+        .set('Cookie', bobCookie)
+        .expect(403)
+    })
+
+    it('should handle sharing non-existent trip', async () => {
+      await request(app.callback())
+        .post('/trips/999/share/user/2')
+        .set('Cookie', aliceCookie)
+        .send({ permission_level: 'read' })
+        .expect(404)
+    })
+
+    it('should handle unsharing from non-existent trip', async () => {
+      await request(app.callback())
+        .delete('/trips/999/share/user/2')
+        .set('Cookie', aliceCookie)
+        .expect(404)
+    })
+
+    it('should prevent unauthenticated users from sharing', async () => {
+      await request(app.callback())
+        .post('/trips/1/share/user/2')
+        .send({ permission_level: 'read' })
+        .expect(401)
+    })
+
+    it('should maintain separate permissions for organization and user shares', async () => {
+      // Alice shares trip 1 with organization (read)
+      await request(app.callback())
+        .post('/trips/1/share/organization')
+        .set('Cookie', aliceCookie)
+        .send({ permission_level: 'read' })
+
+      // Alice also shares trip 1 with Bob specifically (write)
+      await request(app.callback())
+        .post('/trips/1/share/user/2')
+        .set('Cookie', aliceCookie)
+        .send({ permission_level: 'write' })
+
+      // Bob should be able to edit (user-specific write overrides org read)
+      await request(app.callback())
+        .put('/trips/1')
+        .set('Cookie', bobCookie)
+        .send({ title: 'Bob can write' })
+        .expect(200)
+    })
+
+    it('should allow sharing with multiple users independently', async () => {
+      // Alice shares with Bob (read)
+      await request(app.callback())
+        .post('/trips/1/share/user/2')
+        .set('Cookie', aliceCookie)
+        .send({ permission_level: 'read' })
+
+      // Alice shares with Charlie (write)
+      await request(app.callback())
+        .post('/trips/1/share/user/3')
+        .set('Cookie', aliceCookie)
+        .send({ permission_level: 'write' })
+
+      // Bob can read
+      await request(app.callback())
+        .get('/trips/1')
+        .set('Cookie', bobCookie)
+        .expect(200)
+
+      // Charlie can write
+      await request(app.callback())
+        .put('/trips/1')
+        .set('Cookie', charlieCookie)
+        .send({ title: 'Charlie can write' })
+        .expect(200)
+
+      // Bob still cannot write
+      await request(app.callback())
+        .put('/trips/1')
+        .set('Cookie', bobCookie)
+        .send({ title: 'Bob cannot write' })
+        .expect(403)
+    })
+
+    it('should handle zero user ID gracefully', async () => {
+      await request(app.callback())
+        .post('/trips/1/share/user/0')
+        .set('Cookie', aliceCookie)
+        .send({ permission_level: 'read' })
+        .expect(404)
+    })
+
+    it('should handle very large user IDs', async () => {
+      await request(app.callback())
+        .post('/trips/1/share/user/999999')
+        .set('Cookie', aliceCookie)
+        .send({ permission_level: 'read' })
+        .expect(404)
+    })
+  })
+
   afterAll(async () => {
     await closeDatabase()
   })

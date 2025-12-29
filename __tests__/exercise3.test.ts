@@ -142,6 +142,166 @@ describe('Exercise 3: Organization Sharing', () => {
     })
   })
 
+  // Additional edge cases and validation tests
+  describe('Organization Sharing Edge Cases', () => {
+    it('should reject sharing with invalid permission level', async () => {
+      await request(app.callback())
+        .post('/trips/1/share/organization')
+        .set('Cookie', aliceCookie)
+        .send({ permission_level: 'invalid' })
+        .expect(400)
+    })
+
+    it('should reject sharing without permission level', async () => {
+      await request(app.callback())
+        .post('/trips/1/share/organization')
+        .set('Cookie', aliceCookie)
+        .send({})
+        .expect(400)
+    })
+
+    it('should handle sharing non-existent trip', async () => {
+      await request(app.callback())
+        .post('/trips/999/share/organization')
+        .set('Cookie', aliceCookie)
+        .send({ permission_level: 'read' })
+        .expect(404)
+    })
+
+    it('should handle unsharing non-shared trip', async () => {
+      // First, make sure to unshare if it was shared in previous tests
+      await request(app.callback())
+        .delete('/trips/2/share/organization')
+        .set('Cookie', aliceCookie)
+
+      // Now try to unshare again - should get 404
+      const response = await request(app.callback())
+        .delete('/trips/2/share/organization')
+        .set('Cookie', aliceCookie)
+        .expect(404)
+
+      expect(response.body.error).toContain('not shared')
+    })
+
+    it('should handle invalid trip ID for sharing', async () => {
+      await request(app.callback())
+        .post('/trips/invalid/share/organization')
+        .set('Cookie', aliceCookie)
+        .send({ permission_level: 'read' })
+        .expect(400)
+    })
+
+    it('should prevent non-authenticated users from sharing', async () => {
+      await request(app.callback())
+        .post('/trips/1/share/organization')
+        .send({ permission_level: 'read' })
+        .expect(401)
+    })
+
+    it('should allow updating permission level by re-sharing', async () => {
+      // Share with read first
+      await request(app.callback())
+        .post('/trips/1/share/organization')
+        .set('Cookie', aliceCookie)
+        .send({ permission_level: 'read' })
+
+      // Re-share with write (should update)
+      const response = await request(app.callback())
+        .post('/trips/1/share/organization')
+        .set('Cookie', aliceCookie)
+        .send({ permission_level: 'write' })
+        .expect(200)
+
+      expect(response.body.share.permission_level).toBe('write')
+
+      // Bob should now be able to edit
+      await request(app.callback())
+        .put('/trips/1')
+        .set('Cookie', bobCookie)
+        .send({ title: 'Updated by Bob' })
+        .expect(200)
+    })
+
+    it('should maintain ownership permissions separately from sharing', async () => {
+      // Even after sharing with write, owner should still be able to delete
+      await request(app.callback())
+        .post('/trips/1/share/organization')
+        .set('Cookie', aliceCookie)
+        .send({ permission_level: 'write' })
+
+      // Alice can still delete (owner)
+      const aliceTrip = await request(app.callback())
+        .post('/trips')
+        .set('Cookie', aliceCookie)
+        .send({
+          title: 'Test Delete',
+          destination: 'Test',
+          start_date: '2025-01-01',
+          end_date: '2025-01-02',
+        })
+
+      await request(app.callback())
+        .post(`/trips/${aliceTrip.body.id}/share/organization`)
+        .set('Cookie', aliceCookie)
+        .send({ permission_level: 'write' })
+
+      await request(app.callback())
+        .delete(`/trips/${aliceTrip.body.id}`)
+        .set('Cookie', aliceCookie)
+        .expect(204)
+    })
+
+    it('should not allow sharing trips you do not own even if you have write access', async () => {
+      // Alice shares trip 2 with organization (write permission)
+      await request(app.callback())
+        .post('/trips/2/share/organization')
+        .set('Cookie', aliceCookie)
+        .send({ permission_level: 'write' })
+
+      // Bob has write access but cannot share (not owner)
+      await request(app.callback())
+        .post('/trips/2/share/organization')
+        .set('Cookie', bobCookie)
+        .send({ permission_level: 'read' })
+        .expect(403)
+    })
+  })
+
+  describe('Permission Inheritance', () => {
+    it('should allow organization members with write to modify trip fields', async () => {
+      await request(app.callback())
+        .post('/trips/2/share/organization')
+        .set('Cookie', aliceCookie)
+        .send({ permission_level: 'write' })
+
+      const response = await request(app.callback())
+        .put('/trips/2')
+        .set('Cookie', bobCookie)
+        .send({ 
+          destination: 'Updated Destination',
+          title: 'Updated Title' 
+        })
+        .expect(200)
+
+      expect(response.body.destination).toBe('Updated Destination')
+      expect(response.body.title).toBe('Updated Title')
+    })
+
+    it('should prevent read-only members from any modifications', async () => {
+      await request(app.callback())
+        .post('/trips/1/share/organization')
+        .set('Cookie', aliceCookie)
+        .send({ permission_level: 'read' })
+
+      // Bob tries partial update
+      await request(app.callback())
+        .put('/trips/1')
+        .set('Cookie', bobCookie)
+        .send({ destination: 'New Destination' })
+        .expect(403)
+    })
+  })
+
   afterAll(async () => {
     await closeDatabase()
   })
