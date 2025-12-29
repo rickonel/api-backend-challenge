@@ -1,6 +1,14 @@
 import Router from '@koa/router'
 import { requireAuth } from '../middleware/requireAuth'
-import { getTrips, getTrip, createTrip, updateTrip, deleteTrip } from '../middleware/tripsMiddleware'
+import { 
+  getTrips, 
+  getTrip, 
+  createTrip, 
+  updateTrip, 
+  deleteTrip,
+  shareWithOrganization,
+  unshareWithOrganization,
+} from '../middleware/tripsMiddleware'
 
 const router = new Router({ prefix: '/trips' })
 
@@ -11,5 +19,7 @@ router.get('/:id', getTrip)
 router.post('/', createTrip)
 router.put('/:id', updateTrip)
 router.delete('/:id', deleteTrip)
+router.post('/:id/share/organization', shareWithOrganization)
+router.delete('/:id/share/organization', unshareWithOrganization)
 
 export default router

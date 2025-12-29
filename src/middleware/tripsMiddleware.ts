@@ -2,7 +2,9 @@ import { Context } from 'koa'
 import TripModel from '../models/tripModel'
 import { tripCreateSchema, tripUpdateSchema } from '../schemas/trip'
 import { UserPublic } from '../schemas/user'
-import { userCanAccessTrip, userCanEditTrip, addOwner } from '../models/tripPermissionModel'
+import { userCanAccessTrip, userCanEditTrip, addOwner, isOwner } from '../models/tripPermissionModel'
+import OrganizationTripShareModel from '../models/organizationTripShareModel'
+import { shareWithOrganizationSchema } from '../schemas/organizationTripShare'
 
 export async function getTrips(ctx: Context) {
   const user = ctx.state.user as UserPublic
@@ -77,12 +79,60 @@ export async function updateTrip(ctx: Context) {
 export async function deleteTrip(ctx: Context) {
   const id = parseInt(ctx.params.id, 10)
   const user = ctx.state.user as UserPublic
-  const canEdit = await userCanEditTrip(id, user.id)
-  if (!canEdit) ctx.throw(403, 'Access denied')
+  
+  const owner = await isOwner(id, user.id)
+  if (!owner) ctx.throw(403, 'Only the trip owner can delete')
 
   const deleted = await TripModel.remove(id)
 
   if (!deleted) ctx.throw(404, 'Trip not found')
 
   ctx.status = 204
+}
+
+export async function shareWithOrganization(ctx: Context) {
+  const tripId = parseInt(ctx.params.id, 10)
+  const user = ctx.state.user as UserPublic
+
+  const trip = await TripModel.findById(tripId)
+  if (!trip) ctx.throw(404, 'Trip not found')
+
+  const owner = await isOwner(tripId, user.id)
+  if (!owner) ctx.throw(403, 'Only the trip owner can share')
+
+  const validation = shareWithOrganizationSchema.safeParse(ctx.request.body)
+  if (!validation.success) {
+    ctx.throw(400, 'Validation failed', {
+      details: validation.error.flatten().fieldErrors,
+    })
+  }
+
+  const share = await OrganizationTripShareModel.create(
+    tripId,
+    user.organization_id,
+    validation.data.permission_level
+  )
+
+  ctx.body = {
+    message: 'Trip shared with organization successfully',
+    share,
+  }
+}
+
+export async function unshareWithOrganization(ctx: Context) {
+  const tripId = parseInt(ctx.params.id, 10)
+  const user = ctx.state.user as UserPublic
+
+  const trip = await TripModel.findById(tripId)
+  if (!trip) ctx.throw(404, 'Trip not found')
+
+  const owner = await isOwner(tripId, user.id)
+  if (!owner) ctx.throw(403, 'Only the trip owner can unshare')
+
+  const deleted = await OrganizationTripShareModel.remove(tripId, user.organization_id)
+  if (!deleted) ctx.throw(404, 'Trip is not shared with organization')
+
+  ctx.body = {
+    message: 'Trip unshared from organization successfully',
+  }
 }
