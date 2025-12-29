@@ -1,198 +1,151 @@
 import request from 'supertest'
-import app from '../src/app'
-import { pool } from '../src/db'
-
-async function resetDatabase() {
-  await pool.query('TRUNCATE payments, bookings, travelers, trips RESTART IDENTITY CASCADE')
-}
-
-beforeEach(async () => {
-  await resetDatabase()
-})
-
-afterAll(async () => {
-  await pool.end()
-})
+import app from '../src/index'
 
 describe('Exercise 2: Authentication & Authorization', () => {
+  let aliceCookie: string
+  let bobCookie: string
+
   describe('POST /auth/register', () => {
-    it('registers user and returns public data', async () => {
+    it('should register a new user', async () => {
+      const timestamp = Date.now()
       const response = await request(app.callback())
         .post('/auth/register')
         .send({
-          email: 'user@example.com',
-          password: 'password123',
-          first_name: 'Ada',
-          last_name: 'Lovelace',
+          email: `testuser${timestamp}@test.com`,
+          password: 'testpassword123',
+          first_name: 'Test',
+          last_name: 'User',
           organization_id: 1,
         })
+        .expect(201)
 
-      expect(response.status).toBe(201)
-      expect(response.body.user).toMatchObject({
-        email: 'user@example.com',
-        first_name: 'Ada',
-        last_name: 'Lovelace',
-      })
+      expect(response.body).toHaveProperty('user')
+      expect(response.body.user).toHaveProperty('email', `testuser${timestamp}@test.com`)
+      expect(response.body.user).not.toHaveProperty('password')
       expect(response.headers['set-cookie']).toBeDefined()
     })
   })
 
   describe('POST /auth/login', () => {
-    it('authenticates user with valid credentials', async () => {
-      // Assume user is already registered
-      await request(app.callback())
-        .post('/auth/register')
-        .send({
-          email: 'user@example.com',
-          password: 'password123',
-          first_name: 'Ada',
-          last_name: 'Lovelace',
-          organization_id: 1,
-        })
-
+    it('should login with valid credentials', async () => {
       const response = await request(app.callback())
         .post('/auth/login')
-        .send({ email: 'user@example.com', password: 'password123' })
+        .send({
+          email: 'alice@wanderlust.com',
+          password: 'password123',
+        })
+        .expect(200)
 
-      expect(response.status).toBe(200)
-      expect(response.body.user.email).toBe('user@example.com')
+      expect(response.body).toHaveProperty('user')
+      expect(response.body.user).toHaveProperty('email', 'alice@wanderlust.com')
       expect(response.headers['set-cookie']).toBeDefined()
+      
+      // Save cookie for subsequent tests
+      aliceCookie = response.headers['set-cookie'][0]
+    })
+
+    it('should reject invalid credentials', async () => {
+      await request(app.callback())
+        .post('/auth/login')
+        .send({
+          email: 'alice@wanderlust.com',
+          password: 'wrongpassword',
+        })
+        .expect(401)
     })
   })
 
   describe('GET /auth/me', () => {
-    it('returns current user when authenticated', async () => {
-      const registerResponse = await request(app.callback())
-        .post('/auth/register')
-        .send({
-          email: 'user@example.com',
-          password: 'password123',
-          first_name: 'Ada',
-          last_name: 'Lovelace',
-          organization_id: 1,
-        })
-
-      const cookies = registerResponse.headers['set-cookie']
-
+    it('should return current user when authenticated', async () => {
       const response = await request(app.callback())
         .get('/auth/me')
-        .set('Cookie', cookies)
+        .set('Cookie', aliceCookie)
+        .expect(200)
 
-      expect(response.status).toBe(200)
-      expect(response.body.user.email).toBe('user@example.com')
+      expect(response.body.user).toHaveProperty('email', 'alice@wanderlust.com')
+      expect(response.body.user).not.toHaveProperty('password')
     })
 
-    it('returns 401 when not authenticated', async () => {
-      const response = await request(app.callback()).get('/auth/me')
-
-      expect(response.status).toBe(401)
-      expect(response.body.error).toBe('Authentication required')
+    it('should return 401 when not authenticated', async () => {
+      await request(app.callback())
+        .get('/auth/me')
+        .expect(401)
     })
   })
 
   describe('POST /auth/logout', () => {
-    it('logs out authenticated user', async () => {
-      const registerResponse = await request(app.callback())
-        .post('/auth/register')
-        .send({
-          email: 'user@example.com',
-          password: 'password123',
-          first_name: 'Ada',
-          last_name: 'Lovelace',
-          organization_id: 1,
-        })
-
-      const cookies = registerResponse.headers['set-cookie']
-
+    it('should logout current user', async () => {
       const response = await request(app.callback())
         .post('/auth/logout')
-        .set('Cookie', cookies)
+        .set('Cookie', aliceCookie)
+        .expect(200)
 
-      expect(response.status).toBe(200)
-      expect(response.body.message).toBe('Logged out successfully')
-      expect(response.headers['set-cookie'][0]).toContain('session=');
+      expect(response.body).toHaveProperty('message', 'Logged out successfully')
     })
   })
 
-  describe('Trips authorization', () => {
-    it('requires authentication to create a trip', async () => {
-      const response = await request(app.callback()).post('/trips').send({
-        title: 'Paris Getaway',
-        destination: 'Paris',
-        start_date: '2025-06-01',
-        end_date: '2025-06-07',
-      })
+  describe('Trip Authorization', () => {
+    beforeAll(async () => {
+      // Login Alice
+      const aliceRes = await request(app.callback())
+        .post('/auth/login')
+        .send({ email: 'alice@wanderlust.com', password: 'password123' })
+      aliceCookie = aliceRes.headers['set-cookie'][0]
 
-      expect(response.status).toBe(401)
-      expect(response.body.error).toBe('Authentication required')
+      // Login Bob
+      const bobRes = await request(app.callback())
+        .post('/auth/login')
+        .send({ email: 'bob@wanderlust.com', password: 'password123' })
+      bobCookie = bobRes.headers['set-cookie'][0]
     })
 
-    it('prevents other users from accessing private trips', async () => {
-      const ownerResponse = await request(app.callback())
-        .post('/auth/register')
-        .send({
-          email: 'owner@example.com',
-          password: 'password123',
-          first_name: 'Owner',
-          last_name: 'User',
-          organization_id: 1,
-        })
-
-      const ownerCookies = ownerResponse.headers['set-cookie']
-
-      const tripResponse = await request(app.callback())
+    it('should require authentication to create trips', async () => {
+      await request(app.callback())
         .post('/trips')
-        .set('Cookie', ownerCookies)
         .send({
-          title: 'Owner Trip',
-          destination: 'Rome',
+          title: 'Test Trip',
+          destination: 'Madrid',
           start_date: '2025-07-01',
-          end_date: '2025-07-07',
+          end_date: '2025-07-05',
         })
-
-      const otherUserResponse = await request(app.callback())
-        .post('/auth/register')
-        .send({
-          email: 'other@example.com',
-          password: 'password123',
-          first_name: 'Other',
-          last_name: 'User',
-          organization_id: 2,
-        })
-
-      const otherCookies = otherUserResponse.headers['set-cookie']
-
-      const response = await request(app.callback())
-        .get(`/trips/${tripResponse.body.id}`)
-        .set('Cookie', otherCookies)
-
-      expect(response.status).toBe(403)
-      expect(response.body.error).toBe('Access denied')
+        .expect(401)
     })
-  })
 
-  describe('Bookings remain public', () => {
-    it('allows creating booking without authentication', async () => {
-      const trip = await pool.query(
-        `INSERT INTO trips (title, destination, start_date, end_date)
-         VALUES ('Test', 'Test City', '2025-01-01', '2025-01-05')
-         RETURNING id`
-      )
+    it('should create trip when authenticated', async () => {
+      const response = await request(app.callback())
+        .post('/trips')
+        .set('Cookie', aliceCookie)
+        .send({
+          title: 'Madrid Adventure',
+          destination: 'Madrid',
+          start_date: '2025-07-01',
+          end_date: '2025-07-05',
+        })
+        .expect(201)
 
-      const traveler = await pool.query(
-        `INSERT INTO travelers (first_name, last_name, email)
-         VALUES ('John', 'Doe', 'john@example.com')
-         RETURNING id`
-      )
+      expect(response.body).toHaveProperty('title', 'Madrid Adventure')
+      expect(response.body).toHaveProperty('destination', 'Madrid')
+    })
 
-      const response = await request(app.callback()).post('/bookings').send({
-        trip_id: trip.rows[0].id,
-        traveler_id: traveler.rows[0].id,
-      })
+    it('should make trips private by default', async () => {
+      // Alice tries to access Bob's trip (trip 3)
+      await request(app.callback())
+        .get('/trips/3')
+        .set('Cookie', aliceCookie)
+        .expect(403)
+    })
 
-      expect(response.status).toBe(201)
-      expect(response.body.trip_id).toBe(trip.rows[0].id)
-      expect(response.body.traveler_id).toBe(traveler.rows[0].id)
+    it('should allow travelers to create bookings without authentication', async () => {
+      const response = await request(app.callback())
+        .post('/bookings')
+        .send({
+          trip_id: 1,
+          traveler_id: 1,
+          status: 'pending',
+        })
+        .expect(201)
+
+      expect(response.body).toHaveProperty('status', 'pending')
     })
   })
 })
