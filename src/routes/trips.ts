@@ -8,6 +8,8 @@ import {
   deleteTrip,
   shareWithOrganization,
   unshareWithOrganization,
+  shareWithUser,
+  unshareWithUser,
 } from '../middleware/tripsMiddleware'
 
 const router = new Router({ prefix: '/trips' })
@@ -21,5 +23,7 @@ router.put('/:id', updateTrip)
 router.delete('/:id', deleteTrip)
 router.post('/:id/share/organization', shareWithOrganization)
 router.delete('/:id/share/organization', unshareWithOrganization)
+router.post('/:id/share/user/:userId', shareWithUser)
+router.delete('/:id/share/user/:userId', unshareWithUser)
 
 export default router

@@ -1,5 +1,6 @@
 import { executeQuery } from '../db'
 import { getOrganizationPermission } from './organizationTripShareModel'
+import { UserTripShareModel } from './userTripShareModel'
 
 export async function addOwner(tripId: number, userId: number): Promise<void> {
   await executeQuery(
@@ -21,6 +22,7 @@ export async function isOwner(tripId: number, userId: number): Promise<boolean> 
 }
 
 export async function userCanAccessTrip(tripId: number, userId: number): Promise<boolean> {
+  
   const individualPermResult = await executeQuery<{ exists: boolean }>(
     `SELECT true AS exists
      FROM trip_permissions
@@ -28,6 +30,9 @@ export async function userCanAccessTrip(tripId: number, userId: number): Promise
     [tripId, userId]
   )
   if (individualPermResult.rows[0]?.exists) return true
+
+  const userPermission = await UserTripShareModel.getUserPermission(tripId, userId)
+  if (userPermission) return true
 
   const userOrgResult = await executeQuery<{ organization_id: number }>(
     `SELECT organization_id FROM users WHERE id = $1`,
@@ -41,6 +46,7 @@ export async function userCanAccessTrip(tripId: number, userId: number): Promise
 }
 
 export async function userCanEditTrip(tripId: number, userId: number): Promise<boolean> {
+  // Check individual permissions
   const individualPermResult = await executeQuery<{ permission_level: string }>(
     `SELECT permission_level
      FROM trip_permissions
@@ -49,6 +55,9 @@ export async function userCanEditTrip(tripId: number, userId: number): Promise<b
   )
   const individualPerm = individualPermResult.rows[0]?.permission_level
   if (individualPerm === 'owner' || individualPerm === 'write') return true
+
+  const userPermission = await UserTripShareModel.getUserPermission(tripId, userId)
+  if (userPermission === 'write') return true
 
   const userOrgResult = await executeQuery<{ organization_id: number }>(
     `SELECT organization_id FROM users WHERE id = $1`,
