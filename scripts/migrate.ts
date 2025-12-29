@@ -48,6 +48,43 @@ async function migrate() {
       )
     `)
 
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS organizations (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(255) NOT NULL UNIQUE,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      )
+    `)
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS users (
+        id SERIAL PRIMARY KEY,
+        organization_id INTEGER NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+        email VARCHAR(255) NOT NULL UNIQUE,
+        password_hash VARCHAR(255) NOT NULL,
+        first_name VARCHAR(100) NOT NULL,
+        last_name VARCHAR(100) NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      )
+    `)
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS sessions (
+        id VARCHAR(64) PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        expires_at TIMESTAMPTZ NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      )
+    `)
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS trip_owners (
+        trip_id INTEGER NOT NULL REFERENCES trips(id) ON DELETE CASCADE,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        PRIMARY KEY (trip_id, user_id)
+      )
+    `)
+
     // Create indexes
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_bookings_trip_id ON bookings(trip_id)
@@ -57,6 +94,15 @@ async function migrate() {
     `)
     await client.query(`
       CREATE INDEX IF NOT EXISTS idx_payments_booking_id ON payments(booking_id)
+    `)
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_users_organization_id ON users(organization_id)
+    `)
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)
+    `)
+    await client.query(`
+      CREATE INDEX IF NOT EXISTS idx_trip_owners_user_id ON trip_owners(user_id)
     `)
 
     console.log('Migrations completed successfully')
