@@ -6,23 +6,23 @@ import PaymentModel from '../models/paymentModel'
 import { PaymentStatus } from '../schemas/payment'
 import { bookingCreateSchema, bookingUpdateSchema } from '../schemas/booking'
 import { validateBody, validateHasFields } from '../utils/validation'
+import { parseId, parseQueryInt } from '../utils/params'
+import { requireResource } from '../utils/resources'
 
 export async function getBookings(ctx: Context) {
   const status = ctx.query.status as string | undefined
-  const tripId = ctx.query.trip_id as string | undefined
+  const tripId = parseQueryInt(ctx.query.trip_id)
 
   const bookings = await BookingModel.findAll({
     status,
-    trip_id: tripId ? parseInt(tripId, 10) : undefined,
+    trip_id: tripId,
   })
   ctx.body = bookings
 }
 
 export async function getBooking(ctx: Context) {
-  const id = parseInt(ctx.params.id, 10)
-  const booking = await BookingModel.findById(id)
-
-  if (!booking) ctx.throw(404, 'Booking not found')
+  const id = parseId(ctx)
+  const booking = await requireResource(ctx, () => BookingModel.findById(id), 'Booking')
 
   ctx.body = booking
 }
@@ -32,12 +32,10 @@ export async function createBooking(ctx: Context) {
   const { trip_id, traveler_id } = data
 
   // Verify trip exists
-  const trip = await TripModel.findById(trip_id)
-  if (!trip) ctx.throw(400, 'Trip not found')
+  await requireResource(ctx, () => TripModel.findById(trip_id), 'Trip', 400)
 
   // Verify traveler exists
-  const traveler = await TravelerModel.findById(traveler_id)
-  if (!traveler) ctx.throw(400, 'Traveler not found')
+  await requireResource(ctx, () => TravelerModel.findById(traveler_id), 'Traveler', 400)
 
   const booking = await BookingModel.create(data)
   ctx.status = 201
@@ -45,31 +43,27 @@ export async function createBooking(ctx: Context) {
 }
 
 export async function updateBooking(ctx: Context) {
-  const id = parseInt(ctx.params.id, 10)
+  const id = parseId(ctx)
   const data = validateBody(ctx, bookingUpdateSchema)
   validateHasFields(ctx, data)
 
   // Verify trip exists if updating
   if (data.trip_id !== undefined) {
-    const trip = await TripModel.findById(data.trip_id)
-    if (!trip) ctx.throw(400, 'Trip not found')
+    await requireResource(ctx, () => TripModel.findById(data.trip_id!), 'Trip', 400)
   }
 
   // Verify traveler exists if updating
   if (data.traveler_id !== undefined) {
-    const traveler = await TravelerModel.findById(data.traveler_id)
-    if (!traveler) ctx.throw(400, 'Traveler not found')
+    await requireResource(ctx, () => TravelerModel.findById(data.traveler_id!), 'Traveler', 400)
   }
 
-  const booking = await BookingModel.update(id, data)
-
-  if (!booking) ctx.throw(404, 'Booking not found')
+  const booking = await requireResource(ctx, () => BookingModel.update(id, data), 'Booking')
 
   ctx.body = booking
 }
 
 export async function deleteBooking(ctx: Context) {
-  const id = parseInt(ctx.params.id, 10)
+  const id = parseId(ctx)
   const deleted = await BookingModel.remove(id)
 
   if (!deleted) ctx.throw(404, 'Booking not found')
@@ -78,10 +72,9 @@ export async function deleteBooking(ctx: Context) {
 }
 
 export async function cancelBooking(ctx: Context) {
-  const id = parseInt(ctx.params.id, 10)
-  const booking = await BookingModel.findById(id)
+  const id = parseId(ctx)
+  const booking = await requireResource(ctx, () => BookingModel.findById(id), 'Booking')
 
-  if (!booking) ctx.throw(404, 'Booking not found')
   if (booking.status === 'cancelled') ctx.throw(400, 'Booking is already cancelled')
 
   const updatedBooking = await BookingModel.update(id, { status: 'cancelled' })
