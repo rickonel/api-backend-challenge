@@ -3,6 +3,7 @@ import tripsRouter from './trips'
 import travelersRouter from './travelers'
 import bookingsRouter from './bookings'
 import paymentsRouter from './payments'
+import authRouter from './auth'
 
 const router = new Router()
 
@@ -20,5 +21,7 @@ router.use(bookingsRouter.routes())
 router.use(bookingsRouter.allowedMethods())
 router.use(paymentsRouter.routes())
 router.use(paymentsRouter.allowedMethods())
+router.use(authRouter.routes())
+router.use(authRouter.allowedMethods())
 
 export default router

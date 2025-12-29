@@ -2,6 +2,7 @@ import Koa from 'koa'
 import cors from '@koa/cors'
 import bodyParser from 'koa-bodyparser'
 import router from './routes'
+import { authenticate } from './middleware/requireAuth'
 
 const app = new Koa()
 
@@ -32,6 +33,7 @@ app.use(async (ctx, next) => {
 
 app.use(cors())
 app.use(bodyParser())
+app.use(authenticate)
 
 app.use(router.routes())
 app.use(router.allowedMethods())
