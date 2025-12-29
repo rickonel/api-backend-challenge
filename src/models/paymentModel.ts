@@ -58,7 +58,7 @@ async function findLatestCompletedByBooking(bookingId: number): Promise<Payment 
     SELECT *
     FROM payments
     WHERE booking_id = $1 AND status = 'completed'
-    ORDER BY created_at DESC
+    ORDER BY created_at DESC, id DESC
     LIMIT 1
   `
   const result = await executeQuery<Payment>(query, [bookingId])

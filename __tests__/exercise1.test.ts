@@ -92,6 +92,22 @@ async function createPayment(data: {
   }
 }
 
+async function listPayments(bookingId: number) {
+  const result = await pool.query<{ status: string; amount: string; currency: string }>(
+    `SELECT status, amount, currency
+     FROM payments
+     WHERE booking_id = $1
+     ORDER BY id ASC`,
+    [bookingId]
+  )
+
+  return result.rows.map((row) => ({
+    status: row.status,
+    amount: Number(row.amount),
+    currency: row.currency,
+  }))
+}
+
 beforeEach(async () => {
   await resetDatabase()
 })
@@ -130,5 +146,103 @@ describe('Exercise 1: Booking Cancellation', () => {
 
     expect(response.status).toBe(400)
     expect(response.body.error).toBe('Booking is already cancelled')
+  })
+
+  it('returns 404 when booking does not exist', async () => {
+    const response = await request(app.callback()).patch('/bookings/999/cancel')
+
+    expect(response.status).toBe(404)
+    expect(response.body.error).toBe('Booking not found')
+  })
+
+  it('cancels booking without payments and does not include refund', async () => {
+    const trip = await createTrip()
+    const traveler = await createTraveler()
+    const booking = await createBooking({ trip_id: trip.id, traveler_id: traveler.id })
+
+    const response = await request(app.callback()).patch(`/bookings/${booking.id}/cancel`)
+
+    expect(response.status).toBe(200)
+    expect(response.body.booking.status).toBe('cancelled')
+    expect(response.body).not.toHaveProperty('refund')
+  })
+
+  it('does not create refund when latest payment is pending', async () => {
+    const trip = await createTrip()
+    const traveler = await createTraveler()
+    const booking = await createBooking({ trip_id: trip.id, traveler_id: traveler.id })
+    await createPayment({ booking_id: booking.id, status: 'pending' })
+
+    const response = await request(app.callback()).patch(`/bookings/${booking.id}/cancel`)
+
+    expect(response.status).toBe(200)
+    expect(response.body.booking.status).toBe('cancelled')
+    expect(response.body).not.toHaveProperty('refund')
+  })
+
+  it('uses latest completed payment when multiple exist', async () => {
+    const trip = await createTrip()
+    const traveler = await createTraveler()
+    const booking = await createBooking({ trip_id: trip.id, traveler_id: traveler.id })
+    await createPayment({ booking_id: booking.id, amount: 200 })
+    await createPayment({ booking_id: booking.id, amount: 750 })
+
+    const response = await request(app.callback()).patch(`/bookings/${booking.id}/cancel`)
+
+    expect(response.status).toBe(200)
+    expect(Number(response.body.refund.amount)).toBe(-750)
+  })
+
+  it('keeps original payment status as completed after refund', async () => {
+    const trip = await createTrip()
+    const traveler = await createTraveler()
+    const booking = await createBooking({ trip_id: trip.id, traveler_id: traveler.id })
+    await createPayment({ booking_id: booking.id })
+
+    await request(app.callback()).patch(`/bookings/${booking.id}/cancel`)
+
+    const payments = await listPayments(booking.id)
+    expect(payments.map((p) => p.status)).toEqual(['completed', 'refunded'])
+  })
+
+  it('cancels pending bookings and creates refund if payment completed', async () => {
+    const trip = await createTrip()
+    const traveler = await createTraveler()
+    const booking = await createBooking({ trip_id: trip.id, traveler_id: traveler.id, status: 'pending' })
+    await createPayment({ booking_id: booking.id, amount: 150 })
+
+    const response = await request(app.callback()).patch(`/bookings/${booking.id}/cancel`)
+
+    expect(response.status).toBe(200)
+    expect(response.body.booking.status).toBe('cancelled')
+    expect(Number(response.body.refund.amount)).toBe(-150)
+  })
+
+  it('sets refund currency to match original payment currency', async () => {
+    const trip = await createTrip()
+    const traveler = await createTraveler()
+    const booking = await createBooking({ trip_id: trip.id, traveler_id: traveler.id })
+    await createPayment({ booking_id: booking.id, currency: 'USD' })
+
+    const response = await request(app.callback()).patch(`/bookings/${booking.id}/cancel`)
+
+    expect(response.status).toBe(200)
+    expect(response.body.refund.currency).toBe('USD')
+  })
+
+  it('ignores previously refunded payments when cancelling again', async () => {
+    const trip = await createTrip()
+    const traveler = await createTraveler()
+    const booking = await createBooking({ trip_id: trip.id, traveler_id: traveler.id })
+    await createPayment({ booking_id: booking.id, amount: -500, status: 'refunded' })
+
+    const response = await request(app.callback()).patch(`/bookings/${booking.id}/cancel`)
+
+    expect(response.status).toBe(200)
+    expect(response.body).not.toHaveProperty('refund')
+
+    const payments = await listPayments(booking.id)
+    expect(payments).toHaveLength(1)
+    expect(payments[0].status).toBe('refunded')
   })
 })
