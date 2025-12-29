@@ -11,6 +11,7 @@ async function seed() {
     await client.query('DELETE FROM payments')
     await client.query('DELETE FROM bookings')
     await client.query('DELETE FROM travelers')
+    await client.query('DELETE FROM organization_trip_shares')
     await client.query('DELETE FROM trip_permissions')
     await client.query('DELETE FROM sessions')
     await client.query('DELETE FROM trips')
@@ -39,7 +40,7 @@ async function seed() {
       INSERT INTO users (organization_id, email, password_hash, first_name, last_name) VALUES
       (1, 'alice@wanderlust.com', $1, 'Alice', 'Johnson'),
       (1, 'bob@wanderlust.com', $1, 'Bob', 'Smith'),
-      (2, 'charlie@global.com', $1, 'Charlie', 'Brown')
+      (2, 'charlie@globaladv.com', $1, 'Charlie', 'Brown')
     `, [password_hash])
 
     // Insert trips
@@ -47,7 +48,17 @@ async function seed() {
       INSERT INTO trips (title, destination, start_date, end_date) VALUES
       ('Barcelona Adventure', 'Barcelona', '2025-03-15', '2025-03-20'),
       ('Paris Getaway', 'Paris', '2025-04-01', '2025-04-05'),
-      ('Tokyo Explorer', 'Tokyo', '2025-05-10', '2025-05-20')
+      ('Tokyo Explorer', 'Tokyo', '2025-05-10', '2025-05-20'),
+      ('Rome Discovery', 'Rome', '2025-06-01', '2025-06-07')
+    `)
+
+    // Insert trip_permissions (Alice owns trips 1-2, Bob owns trip 3, Charlie owns trip 4)
+    await client.query(`
+      INSERT INTO trip_permissions (trip_id, user_id, permission_level) VALUES
+      (1, 1, 'owner'),
+      (2, 1, 'owner'),
+      (3, 2, 'owner'),
+      (4, 3, 'owner')
     `)
 
     // Insert travelers
