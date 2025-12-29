@@ -2,6 +2,8 @@ import { Context } from 'koa'
 import BookingModel from '../models/bookingModel'
 import TripModel from '../models/tripModel'
 import TravelerModel from '../models/travelerModel'
+import PaymentModel from '../models/paymentModel'
+import { PaymentStatus } from '../schemas/payment'
 import { bookingCreateSchema, bookingUpdateSchema } from '../schemas/booking'
 
 export async function getBookings(ctx: Context) {
@@ -88,4 +90,35 @@ export async function deleteBooking(ctx: Context) {
   if (!deleted) ctx.throw(404, 'Booking not found')
 
   ctx.status = 204
+}
+
+export async function cancelBooking(ctx: Context) {
+  const id = parseInt(ctx.params.id, 10)
+  const booking = await BookingModel.findById(id)
+
+  if (!booking) ctx.throw(404, 'Booking not found')
+  if (booking.status === 'cancelled') ctx.throw(400, 'Booking is already cancelled')
+
+  const updatedBooking = await BookingModel.update(id, { status: 'cancelled' })
+  if (!updatedBooking) ctx.throw(500, 'Failed to cancel booking')
+
+  const completedPayment = await PaymentModel.findLatestCompletedByBooking(id)
+  let refund
+
+  if (completedPayment) {
+    const amount = Number(completedPayment.amount)
+    const refundAmount = -Math.abs(amount)
+
+    refund = await PaymentModel.create({
+      booking_id: id,
+      amount: refundAmount,
+      currency: completedPayment.currency,
+      status: PaymentStatus.Refunded,
+    })
+  }
+
+  ctx.body = {
+    booking: updatedBooking,
+    ...(refund ? { refund } : {}),
+  }
 }
